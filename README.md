@@ -9,7 +9,7 @@ Bookmarks are written in Markdown
 
 ### Configuration
 
-Create yaml file `~/.gitmrk` (or anything supported by [viper](https://github.com/spf13/viper))
+Create yaml file `~/.gitmrkrc.yaml` (or anything supported by [viper](https://github.com/spf13/viper))
 
 Example (fill in the variables):
 ```
