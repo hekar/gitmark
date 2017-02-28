@@ -1,4 +1,4 @@
-package gitmrk
+package gitmark
 
 import (
 	"os"

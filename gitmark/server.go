@@ -1,4 +1,4 @@
-package gitmrk
+package gitmark
 
 import (
 	"os"
@@ -50,7 +50,7 @@ func routeAddBookmark(c web.C, w http.ResponseWriter, r *http.Request) {
 
 	origin := viper.GetString("RepoUrl")
 	branch := viper.GetString("Branch")
-	rootFolder, err := ioutil.TempDir("", "gitmrk-")
+	rootFolder, err := ioutil.TempDir("", "gitmark-")
 	if err != nil {
 		panic(err)
 	}
@@ -89,7 +89,7 @@ func routeAddBookmark(c web.C, w http.ResponseWriter, r *http.Request) {
 }
 
 func setupViper() {
-	viper.SetConfigName(".gitmrkrc")
+	viper.SetConfigName(".gitmarkrc")
 	viper.AddConfigPath("$HOME")
 	viper.AddConfigPath("$HOME/.config")
 	viper.AddConfigPath(".")

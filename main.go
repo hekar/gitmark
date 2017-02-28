@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/gitmrk/gitmrk"
+	"github.com/hekar/gitmark"
 )
 
 func main() {
-	gitmrk.SetupServer()
+	gitmark.SetupServer()
 }
 

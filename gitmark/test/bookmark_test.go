@@ -1,11 +1,11 @@
-package gitmrk
+package gitmark
 
 import (
 	"os"
 	"path"
 	"testing"
 	"io/ioutil"
-	"github.com/gitmrk/gitmrk"
+	"github.com/hekar/gitmark"
 )
 
 // Integration test
@@ -15,7 +15,7 @@ func TestAppendBookmark(t *testing.T) {
 	url := "http://google.ca"
 	title := "Google"
 
-	rootPath, err := ioutil.TempDir("", "gitmrk-")
+	rootPath, err := ioutil.TempDir("", "gitmark-")
 	if err != nil {
 		t.Error(err)
 	}
@@ -35,16 +35,16 @@ func TestAppendBookmark(t *testing.T) {
 		t.Error(err)
 	}
 
-	root := gitmrk.RootFolder{
+	root := gitmark.RootFolder{
 		Repo: repo,
 		Path: rootPath,
 	}
-	bookmark := gitmrk.Bookmark{
+	bookmark := gitmark.Bookmark{
 		Repo: repo,
 		Url: url,
 		Title: title,
 	}
-	gitmrk.AppendBookmark(root, bookmark)
+	gitmark.AppendBookmark(root, bookmark)
 
 	file, err := os.OpenFile(path.Join(repoPath, "README.md"), os.O_RDONLY, 0755)
 	if err != nil {
