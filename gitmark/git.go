@@ -1,15 +1,19 @@
 package gitmark
 
 import (
-	"fmt"
 	"time"
 	"github.com/libgit2/git2go"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/spf13/viper"
 )
 
-func CreateOrOpenRepository(folder string, origin string, branch string) (*git.Repository, error) {
-	fmt.Println(folder)
+type GitProvider struct {
+	Repository *git.Repository
+	Folder string
+	Origin string
+	Branch string
+}
+
+func CreateOrOpenRepository(folder string, origin string, branch string) (*GitProvider, error) {
 	repository, err := git.OpenRepository(folder)
 	if err != nil {
 		repository, err = git.Clone(
@@ -17,23 +21,38 @@ func CreateOrOpenRepository(folder string, origin string, branch string) (*git.R
 				CheckoutBranch: branch,
 			})
 		if err != nil {
-			return repository, err
+			return nil, err
 		}
 	}
 
-	return repository, nil
+	provider := new(GitProvider)
+	provider.Repository = repository
+	provider.Folder = folder
+	provider.Origin = origin
+	provider.Branch = branch
+	return provider, nil
 }
 
-func commitBookmark(repo *git.Repository, b Bookmark) (*Bookmark, error) {
-	refname := "refs/heads/" + viper.GetString("Branch")
+func (g *GitProvider) Free() {
+	g.Repository.Free()
+}
+
+func (g *GitProvider) commit(b Bookmark) (*Bookmark, error) {
+	repo := g.Repository
+
+	username := viper.GetString("UserName")
+	email := viper.GetString("UserEmail")
+	message := viper.GetString("MessagePrefix") + b.Title
+	remoteName := viper.GetString("Remote")
+	refname := "refs/heads/" + g.Branch
+
 	committer := &git.Signature{
-		Name: viper.GetString("UserName"),
-		Email: viper.GetString("UserEmail"),
+		Name: username,
+		Email: email,
 		When: time.Now(),
 	}
-	author := committer
 
-	message := viper.GetString("MessagePrefix") + b.Title
+	author := committer
 
 	head, err := repo.Head()
 	if err != nil {
@@ -74,9 +93,6 @@ func commitBookmark(repo *git.Repository, b Bookmark) (*Bookmark, error) {
 		return nil, err
 	}
 
-	refspecs := []string {refname}
-	spew.Dump(refspecs)
-
 	callbacks := git.RemoteCallbacks {
 	}
 	options := &git.PushOptions{
@@ -84,11 +100,12 @@ func commitBookmark(repo *git.Repository, b Bookmark) (*Bookmark, error) {
 		PbParallelism: 0,
 	}
 
-	remote, err := repo.Remotes.Lookup(viper.GetString("Remote"))
+	remote, err := repo.Remotes.Lookup(remoteName)
 	if err != nil {
 		return nil, err
 	}
 
+	refspecs := []string {refname}
 	err = remote.Push(refspecs, options)
 	if err != nil {
 		return nil, err

@@ -60,8 +60,8 @@ func routeAddBookmark(c web.C, w http.ResponseWriter, r *http.Request) {
 	repoFolder := path.Join(rootFolder, repo)
 	fmt.Println(repoFolder)
 
-	repository, err := CreateOrOpenRepository(repoFolder, origin, branch)
-	defer repository.Free()
+	provider, err := CreateOrOpenRepository(repoFolder, origin, branch)
+	defer provider.Free()
 
 	root := RootFolder{
 		Repo: origin,
@@ -79,7 +79,7 @@ func routeAddBookmark(c web.C, w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Println(string(content))
 
-	_, err = commitBookmark(repository, bookmark)
+	_, err = provider.commit(bookmark)
 	if err != nil {
 		panic(err)
 	}
