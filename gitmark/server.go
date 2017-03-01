@@ -88,7 +88,7 @@ func routeAddBookmark(c web.C, w http.ResponseWriter, r *http.Request) {
 	encoder.Encode(bookmark)
 }
 
-func setupViper() {
+func SetupViper() {
 	viper.SetConfigName(".gitmarkrc")
 	viper.AddConfigPath("$HOME")
 	viper.AddConfigPath("$HOME/.config")
@@ -100,7 +100,7 @@ func setupViper() {
 }
 
 func SetupServer() {
-	setupViper()
+	SetupViper()
 	goji.Post("/bookmark/:repo", routeAddBookmark)
 	goji.Serve()
 }
