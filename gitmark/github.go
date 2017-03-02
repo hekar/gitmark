@@ -112,29 +112,40 @@ func (g *GithubProvider) updateReference(object *github.GitObject, ref string) (
 	return createdReference, nil
 }
 
-func (g *GithubProvider) getReadme(ref string) (string, error) {
+func (g *GithubProvider) getReadme(ref string) (*github.RepositoryContent, error) {
 	options := &github.RepositoryContentGetOptions{
 		Ref: ref,
 	}
 
 	readme, _, err := g.Client.Repositories.GetReadme(g.Context, g.Owner, g.Repo, options)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	readmeContents, err := readme.GetContent()
+	return readme, nil
+}
+
+func (g *GithubProvider) updateReadme(sha, message, branch string, content []byte) (*github.RepositoryContentResponse, error) {
+	file := "README.md"
+	options := &github.RepositoryContentFileOptions{
+		SHA: &sha,
+		Message: &message,
+		Branch: &branch,
+		Content: content,
+	}
+
+	readme, _, err := g.Client.Repositories.UpdateFile(g.Context, g.Owner, g.Repo, file, options)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return readmeContents, nil
+	return readme, nil
 }
 
 func (g *GithubProvider) Commit(b Bookmark) (*Bookmark, error) {
-	username := viper.GetString("UserName")
-	email := viper.GetString("UserEmail")
 	message := viper.GetString("MessagePrefix") + b.Title
-	ref := "heads/" + viper.GetString("Branch")
+	branch := viper.GetString("Branch")
+	ref := "heads/" + branch
 
 	head, err := g.getHead(ref)
 	if err != nil {
@@ -143,32 +154,24 @@ func (g *GithubProvider) Commit(b Bookmark) (*Bookmark, error) {
 
 	spew.Println("head", head)
 
-	readmeContents, err := g.getReadme(ref)
+	readme, err := g.getReadme(ref)
+	if err != nil {
+		return nil, err
+	}
+
+	readmeContents, err := readme.GetContent()
 	if err != nil {
 		return nil, err
 	}
 
 	spew.Println("readme", readmeContents)
 
-	createdCommit, err := g.createCommit(message, username, email, head)
+	updatedReadme, err := g.updateReadme(readme.GetSHA(), message, branch, []byte(readmeContents + "\n* [Test](google.ca)"))
 	if err != nil {
 		return nil, err
 	}
 
-	spew.Println("createdCommit", createdCommit)
-
-	sha := createdCommit.GetSHA()
-	url := createdCommit.GetURL()
-	object := &github.GitObject{
-		SHA: &sha,
-		URL: &url,
-	}
-
-	createdReference, err := g.updateReference(object, ref)
-	if err != nil {
-		return nil, err
-	}
-	spew.Println("createdReference", createdReference)
+	spew.Println("updatedReadme", updatedReadme)
 
 	return &b, nil
 }
