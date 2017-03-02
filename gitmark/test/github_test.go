@@ -19,7 +19,11 @@ func TestCreateGithubClient(t *testing.T) {
 
 	bookmark := gitmark.Bookmark {
 	}
-	client.Commit(bookmark)
+
+	_, err = client.Commit(bookmark)
+	if err != nil {
+		t.Fatal("Err:", err)
+	}
 
 	t.Log("Completed")
 }

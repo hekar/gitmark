@@ -53,6 +53,7 @@ func (g *GithubProvider) Commit(b Bookmark) (*Bookmark, error) {
 	username := viper.GetString("UserName")
 	email := viper.GetString("UserEmail")
 	message := viper.GetString("MessagePrefix") + b.Title
+	refName := "heads/" + viper.GetString("Branch")
 
 	now := time.Now()
 	committer := &github.CommitAuthor {
@@ -61,26 +62,33 @@ func (g *GithubProvider) Commit(b Bookmark) (*Bookmark, error) {
 		Email: &email,
 	}
 
-	treeBody, _, err := g.Client.Git.GetTree(g.Context, g.Owner, g.Repo, "HEAD", false)
+	git := g.Client.Git
+	existingReference, _, err := git.GetRef(g.Context, g.Owner, g.Repo, refName)
 	if err != nil {
 		return nil, err
 	}
 
-	spew.Println(treeBody)
+	spew.Println(existingReference)
 
-	sha := ""
-	tree := &github.Tree{
-		SHA: &sha,
+	tree, _, err := git.GetTree(g.Context, g.Owner, g.Repo, existingReference.Object.GetSHA(), false)
+	if err != nil {
+		return nil, err
 	}
 
-
-	parents := []github.Commit{
+	spew.Println("tree", tree)
+	head, _, err := git.GetCommit(g.Context, g.Owner, g.Repo, tree.GetSHA())
+	if err != nil {
+		return nil, err
 	}
+
+	parents := []github.Commit{*head}
+
+	spew.Println("head", head)
 	commit := &github.Commit{
 		Author: committer,
 		Committer: committer,
 		Message: &message,
-		Tree: tree,
+		Tree: head.Tree,
 		Parents: parents,
 	}
 
@@ -88,6 +96,25 @@ func (g *GithubProvider) Commit(b Bookmark) (*Bookmark, error) {
 	if err != nil {
 		return nil, err
 	}
+	spew.Println(createdCommit)
+
+	sha := createdCommit.GetSHA()
+	url := createdCommit.GetURL()
+	object := &github.GitObject{
+		SHA: &sha,
+		URL: &url,
+	}
+
+	reference := &github.Reference{
+		Ref: &refName,
+		Object: object,
+	}
+
+	ref, _, err := git.UpdateRef(g.Context, g.Owner, g.Repo, reference, true)
+	if err != nil {
+		return nil, err
+	}
+	spew.Println(ref)
 	spew.Println(createdCommit)
 
 
