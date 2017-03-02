@@ -4,44 +4,30 @@ import (
 	"os"
 	"fmt"
 	"path"
-	"encoding/json"
-	"net/http"
+	"log"
 	"io/ioutil"
 	"strings"
 
-	"github.com/zenazn/goji"
-	"github.com/zenazn/goji/web"
+	"github.com/streadway/amqp"
 	"github.com/spf13/viper"
 )
 
-type Error struct {
-	Message string
-	Status int
+func failOnError(err error, msg string) {
+	if err != nil {
+		log.Fatalf("%s: %s", msg, err)
+	}
 }
 
-func routeAddBookmark(c web.C, w http.ResponseWriter, r *http.Request) {
+func addBookmark(token, owner, repo, title, url string) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			fmt.Println("Recovered: ", rec)
 			err, _ := rec.(error)
-			apiError := &Error{
-				Message: err.Error(),
-				Status: 500,
-			}
-
-			encoder := json.NewEncoder(w)
-			encoder.Encode(apiError)
+			log.Panic("err", err.Error())
 		}
 	}()
 
-	err := r.ParseForm()
-	if err != nil {
-		panic(err)
-	}
-
-	repo := strings.Replace(c.URLParams["repo"], "%2F", "/", -1)
-	title := r.PostForm.Get("title")
-	url := r.PostForm.Get("url")
+	repo = strings.Replace(repo, "%2F", "/", -1)
 	bookmark := Bookmark{
 		Repo: repo,
 		Title: title,
@@ -84,8 +70,7 @@ func routeAddBookmark(c web.C, w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
-	encoder := json.NewEncoder(w)
-	encoder.Encode(bookmark)
+	log.Println("Saved bookmark", bookmark)
 }
 
 func SetupViper() {
@@ -101,7 +86,37 @@ func SetupViper() {
 
 func SetupServer() {
 	SetupViper()
-	goji.Post("/bookmark/:repo", routeAddBookmark)
-	goji.Serve()
+
+	rabbitmqUrl := viper.GetString("rabbitmq_url")
+	conn, err := amqp.Dial(rabbitmqUrl)
+	failOnError(err, "Failed to connect to RabbitMQ")
+	defer conn.Close()
+
+	ch, err := conn.Channel()
+	failOnError(err, "Failed to open a channel")
+	defer ch.Close()
+
+	rabbitmqQueue := viper.GetString("rabbitmq_queue")
+	msgs, err := ch.Consume(
+		rabbitmqQueue, // queue
+		"",     // consumer
+		true,   // auto-ack
+		false,  // exclusive
+		false,  // no-local
+		false,  // no-wait
+		nil,    // args
+	)
+	failOnError(err, "Failed to register a consumer")
+
+	forever := make(chan bool)
+
+	go func() {
+		for d := range msgs {
+			log.Printf("Received a message: %s", d.Body)
+		}
+	}()
+
+	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
+	<-forever
 }
 
