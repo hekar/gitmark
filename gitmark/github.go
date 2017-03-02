@@ -49,21 +49,9 @@ func (g *GithubProvider) Free() {
 	/* intentionally blank */
 }
 
-func (g *GithubProvider) Commit(b Bookmark) (*Bookmark, error) {
-	username := viper.GetString("UserName")
-	email := viper.GetString("UserEmail")
-	message := viper.GetString("MessagePrefix") + b.Title
-	refName := "heads/" + viper.GetString("Branch")
-
-	now := time.Now()
-	committer := &github.CommitAuthor {
-		Date: &now,
-		Name: &username,
-		Email: &email,
-	}
-
+func (g *GithubProvider) getHead(ref string) (*github.Commit, error) {
 	git := g.Client.Git
-	existingReference, _, err := git.GetRef(g.Context, g.Owner, g.Repo, refName)
+	existingReference, _, err := git.GetRef(g.Context, g.Owner, g.Repo, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -81,9 +69,19 @@ func (g *GithubProvider) Commit(b Bookmark) (*Bookmark, error) {
 		return nil, err
 	}
 
+	return head, nil
+}
+
+func (g *GithubProvider) createCommit(message, username, email string, head *github.Commit) (*github.Commit, error) {
 	parents := []github.Commit{*head}
 
-	spew.Println("head", head)
+	now := time.Now()
+	committer := &github.CommitAuthor {
+		Date: &now,
+		Name: &username,
+		Email: &email,
+	}
+
 	commit := &github.Commit{
 		Author: committer,
 		Committer: committer,
@@ -96,7 +94,68 @@ func (g *GithubProvider) Commit(b Bookmark) (*Bookmark, error) {
 	if err != nil {
 		return nil, err
 	}
-	spew.Println(createdCommit)
+
+	return createdCommit, nil
+}
+
+func (g *GithubProvider) updateReference(object *github.GitObject, ref string) (*github.Reference, error) {
+	reference := &github.Reference{
+		Ref: &ref,
+		Object: object,
+	}
+
+	createdReference, _, err := g.Client.Git.UpdateRef(g.Context, g.Owner, g.Repo, reference, true)
+	if err != nil {
+		return nil, err
+	}
+
+	return createdReference, nil
+}
+
+func (g *GithubProvider) getReadme(ref string) (string, error) {
+	options := &github.RepositoryContentGetOptions{
+		Ref: ref,
+	}
+
+	readme, _, err := g.Client.Repositories.GetReadme(g.Context, g.Owner, g.Repo, options)
+	if err != nil {
+		return "", err
+	}
+
+	readmeContents, err := readme.GetContent()
+	if err != nil {
+		return "", err
+	}
+
+	return readmeContents, nil
+}
+
+func (g *GithubProvider) Commit(b Bookmark) (*Bookmark, error) {
+	username := viper.GetString("UserName")
+	email := viper.GetString("UserEmail")
+	message := viper.GetString("MessagePrefix") + b.Title
+	ref := "heads/" + viper.GetString("Branch")
+
+	head, err := g.getHead(ref)
+	if err != nil {
+		return nil, err
+	}
+
+	spew.Println("head", head)
+
+	readmeContents, err := g.getReadme(ref)
+	if err != nil {
+		return nil, err
+	}
+
+	spew.Println("readme", readmeContents)
+
+	createdCommit, err := g.createCommit(message, username, email, head)
+	if err != nil {
+		return nil, err
+	}
+
+	spew.Println("createdCommit", createdCommit)
 
 	sha := createdCommit.GetSHA()
 	url := createdCommit.GetURL()
@@ -105,18 +164,11 @@ func (g *GithubProvider) Commit(b Bookmark) (*Bookmark, error) {
 		URL: &url,
 	}
 
-	reference := &github.Reference{
-		Ref: &refName,
-		Object: object,
-	}
-
-	ref, _, err := git.UpdateRef(g.Context, g.Owner, g.Repo, reference, true)
+	createdReference, err := g.updateReference(object, ref)
 	if err != nil {
 		return nil, err
 	}
-	spew.Println(ref)
-	spew.Println(createdCommit)
-
+	spew.Println("createdReference", createdReference)
 
 	return &b, nil
 }
