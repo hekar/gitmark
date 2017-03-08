@@ -1,6 +1,6 @@
 # gitmark
 
-[Goji](https://github.com/zenazn/goji) based server that writes bookmark entries to a git repository
+[relyq]() based server that writes bookmark entries to a git repository
 such as [hekar/bookmarks](https://github.com/hekar/bookmarks).
 
 Bookmarks are written in Markdown
@@ -21,14 +21,7 @@ UserName: "<your_name>"
 UserEmail: "<your_email>"
 ```
 
-### Add a bookmark
-
-```
-curl -X POST --data "title=Google&url=http://google.ca" "http://localhost:8000/bookmark/<username>%252Fbookmarks"
-```
-
 ## TODO
-* [ ] Create a CLI
 * [ ] Support more than Markdown (JSON, HTML, etc.)
 
 ## License

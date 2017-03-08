@@ -166,7 +166,7 @@ func (g *GithubProvider) Commit(b Bookmark) (*Bookmark, error) {
 
 	spew.Println("readme", readmeContents)
 
-	updatedReadme, err := g.updateReadme(readme.GetSHA(), message, branch, []byte(readmeContents + "\n* [Test](google.ca)"))
+	updatedReadme, err := g.updateReadme(readme.GetSHA(), message, branch, []byte(readmeContents + "\n* [" + b.Title + "](" + b.Url + ")"))
 	if err != nil {
 		return nil, err
 	}

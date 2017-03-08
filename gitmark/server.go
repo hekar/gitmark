@@ -1,16 +1,36 @@
 package gitmark
 
 import (
-	"os"
 	"fmt"
-	"path"
+	"time"
 	"log"
-	"io/ioutil"
-	"strings"
 
-	"github.com/streadway/amqp"
 	"github.com/spf13/viper"
+	"github.com/garyburd/redigo/redis"
+	"github.com/Rafflecopter/golang-relyq/relyq"
 )
+
+func newPool(addr string) *redis.Pool {
+	return &redis.Pool{
+		MaxIdle: 3,
+		IdleTimeout: 240 * time.Second,
+		Dial: func () (redis.Conn, error) { return redis.Dial("tcp", addr) },
+	}
+}
+
+func CreateRelyQ(pool *redis.Pool) *relyq.Queue {
+	return relyq.NewRedisJson(pool, &relyq.Config{Prefix: "gitmark"})
+}
+
+type Task struct {
+	relyq.StructuredTask
+
+	//Id string `json:"id"`
+	Owner string `json:"owner"`
+	Repo string `json:"repo"`
+	Title string `json:"title"`
+	Url string `json:"url"`
+}
 
 func failOnError(err error, msg string) {
 	if err != nil {
@@ -18,7 +38,7 @@ func failOnError(err error, msg string) {
 	}
 }
 
-func addBookmark(token, owner, repo, title, url string) {
+func addBookmark(owner, repo, title, url string) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			fmt.Println("Recovered: ", rec)
@@ -27,50 +47,22 @@ func addBookmark(token, owner, repo, title, url string) {
 		}
 	}()
 
-	repo = strings.Replace(repo, "%2F", "/", -1)
 	bookmark := Bookmark{
-		Repo: repo,
 		Title: title,
 		Url: url,
 	}
 
-	origin := viper.GetString("RepoUrl")
-	branch := viper.GetString("Branch")
-	rootFolder, err := ioutil.TempDir("", "gitmark-")
+	githubClient, err := NewGithubClient(owner, repo)
 	if err != nil {
 		panic(err)
 	}
 
-	defer os.RemoveAll(rootFolder)
-
-	repoFolder := path.Join(rootFolder, repo)
-	fmt.Println(repoFolder)
-
-	provider, err := CreateOrOpenRepository(repoFolder, origin, branch)
-	defer provider.Free()
-
-	root := RootFolder{
-		Repo: origin,
-		Path: rootFolder,
-	}
-
-	filename, err := AppendBookmark(root, bookmark)
+	response, err := githubClient.Commit(bookmark)
 	if err != nil {
 		panic(err)
 	}
 
-	content, err := ioutil.ReadFile(filename)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(string(content))
-
-	_, err = provider.commit(bookmark)
-	if err != nil {
-		panic(err)
-	}
-
-	log.Println("Saved bookmark", bookmark)
+	log.Println("Saved bookmark", bookmark, response)
 }
 
 func SetupViper() {
@@ -87,36 +79,35 @@ func SetupViper() {
 func SetupServer() {
 	SetupViper()
 
-	rabbitmqUrl := viper.GetString("rabbitmq_url")
-	conn, err := amqp.Dial(rabbitmqUrl)
-	failOnError(err, "Failed to connect to RabbitMQ")
-	defer conn.Close()
+	redisPool := newPool(":6379")
+	q := CreateRelyQ(redisPool)
 
-	ch, err := conn.Channel()
-	failOnError(err, "Failed to open a channel")
-	defer ch.Close()
+	var example *Task
+	for {
+		l := q.Listen(example)
 
-	rabbitmqQueue := viper.GetString("rabbitmq_queue")
-	msgs, err := ch.Consume(
-		rabbitmqQueue, // queue
-		"",     // consumer
-		true,   // auto-ack
-		false,  // exclusive
-		false,  // no-local
-		false,  // no-wait
-		nil,    // args
-	)
-	failOnError(err, "Failed to register a consumer")
+		go func() {
+			for err := range l.Errors {
+				log.Printf("Received a with an error: %s", err.Error())
+			}
+		}()
 
-	forever := make(chan bool)
+		go func() {
+			for task := range l.Tasks {
+				message := task.(*Task)
+				log.Printf("Received a message: %s", task.Id(), message.Title, message.Url)
+				addBookmark(message.Owner, message.Repo, message.Title, message.Url)
+				err := q.Finish(message)
+				if err != nil {
+					panic(fmt.Errorf("Fatal error config file: %s \n", err))
+				}
+			}
+		}()
+	}
 
-	go func() {
-		for d := range msgs {
-			log.Printf("Received a message: %s", d.Body)
-		}
-	}()
-
-	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
-	<-forever
+	err := q.Close()
+	if err != nil {
+		panic(fmt.Errorf("Fatal error config file: %s \n", err))
+	}
 }
 
