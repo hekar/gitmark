@@ -2,34 +2,36 @@ package gitmark
 
 import (
 	"fmt"
-	"time"
 	"log"
+	"time"
 
-	"github.com/spf13/viper"
-	"github.com/garyburd/redigo/redis"
 	"github.com/Rafflecopter/golang-relyq/relyq"
+	"github.com/garyburd/redigo/redis"
+	"github.com/spf13/viper"
 )
 
 func newPool(addr string) *redis.Pool {
 	return &redis.Pool{
-		MaxIdle: 3,
+		MaxIdle:     3,
 		IdleTimeout: 240 * time.Second,
-		Dial: func () (redis.Conn, error) { return redis.Dial("tcp", addr) },
+		Dial:        func() (redis.Conn, error) { return redis.Dial("tcp", addr) },
 	}
 }
 
-func CreateRelyQ(pool *redis.Pool) *relyq.Queue {
-	return relyq.NewRedisJson(pool, &relyq.Config{Prefix: "gitmark"})
+func createRelyQ(pool *redis.Pool, prefix string) *relyq.Queue {
+	config := &relyq.Config{
+		Prefix: prefix,
+	}
+	return relyq.NewRedisJson(pool, config)
 }
 
 type Task struct {
 	relyq.StructuredTask
 
-	//Id string `json:"id"`
 	Owner string `json:"owner"`
-	Repo string `json:"repo"`
+	Repo  string `json:"repo"`
 	Title string `json:"title"`
-	Url string `json:"url"`
+	URL   string `json:"url"`
 }
 
 func failOnError(err error, msg string) {
@@ -38,76 +40,87 @@ func failOnError(err error, msg string) {
 	}
 }
 
-func addBookmark(owner, repo, title, url string) {
-	defer func() {
-		if rec := recover(); rec != nil {
-			fmt.Println("Recovered: ", rec)
-			err, _ := rec.(error)
-			log.Panic("err", err.Error())
-		}
-	}()
-
+func addBookmark(owner, repo, title, url string) error {
 	bookmark := Bookmark{
 		Title: title,
-		Url: url,
+		Url:   url,
 	}
 
-	githubClient, err := NewGithubClient(owner, repo)
+	githubClient, err := newGithubClient(owner, repo)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
-	response, err := githubClient.Commit(bookmark)
+	response, err := githubClient.commit(bookmark)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	log.Println("Saved bookmark", bookmark, response)
+
+	return nil
 }
 
-func SetupViper() {
+func setupViper() {
 	viper.SetConfigName(".gitmarkrc")
 	viper.AddConfigPath("$HOME")
 	viper.AddConfigPath("$HOME/.config")
 	viper.AddConfigPath(".")
 	err := viper.ReadInConfig()
 	if err != nil {
-		panic(fmt.Errorf("Fatal error config file: %s \n", err))
+		panic(fmt.Errorf("fatal error config file: %s", err))
 	}
 }
 
-func SetupServer() {
-	SetupViper()
+func listenForBookmark(task *Task, listener *relyq.Listener, queue *relyq.Queue) {
+
+	for task := range listener.Tasks {
+		message := task.(*Task)
+		log.Printf("Received a message: %s %s %s", task.Id(), message.Title, message.URL)
+		err := addBookmark(message.Owner, message.Repo, message.Title, message.URL)
+		if err != nil {
+			queue.Fail(message)
+			panic(fmt.Errorf("fatal error cannot save bookmark: %s", err))
+		}
+
+		err = queue.Finish(message)
+		if err != nil {
+			panic(fmt.Errorf("fatal error cannot complete message: %s", err))
+		}
+	}
+}
+
+// ListenToEvents Start event listener. Blocking call.
+func ListenToEvents() {
+	defer func() {
+		if rec := recover(); rec != nil {
+			fmt.Println("Recovered: ", rec)
+			err, _ := rec.(error)
+			log.Panic("err\n", err.Error())
+		}
+	}()
+
+	setupViper()
 
 	redisPool := newPool(":6379")
-	q := CreateRelyQ(redisPool)
+	queue := createRelyQ(redisPool, "gitmark:bookmark")
 
-	var example *Task
+	var genericTask *Task
 	for {
-		l := q.Listen(example)
-
+		listener := queue.Listen(genericTask)
 		go func() {
-			for err := range l.Errors {
+			for err := range listener.Errors {
 				log.Printf("Received a with an error: %s", err.Error())
 			}
 		}()
 
 		go func() {
-			for task := range l.Tasks {
-				message := task.(*Task)
-				log.Printf("Received a message: %s", task.Id(), message.Title, message.Url)
-				addBookmark(message.Owner, message.Repo, message.Title, message.Url)
-				err := q.Finish(message)
-				if err != nil {
-					panic(fmt.Errorf("Fatal error config file: %s \n", err))
-				}
-			}
+			listenForBookmark(genericTask, listener, queue)
 		}()
 	}
 
-	err := q.Close()
+	err := queue.Close()
 	if err != nil {
-		panic(fmt.Errorf("Fatal error config file: %s \n", err))
+		panic(fmt.Errorf("fatal error config file: %s", err))
 	}
 }
-

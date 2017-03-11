@@ -5,6 +5,5 @@ import (
 )
 
 func main() {
-	gitmark.SetupServer()
+	gitmark.ListenToEvents()
 }
-

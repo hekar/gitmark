@@ -1,23 +1,24 @@
 package gitmark
 
 import (
-	"time"
 	"context"
-	"golang.org/x/oauth2"
+	"time"
+
+	"github.com/davecgh/go-spew/spew"
 	"github.com/google/go-github/github"
 	"github.com/spf13/viper"
-	"github.com/davecgh/go-spew/spew"
+	"golang.org/x/oauth2"
 )
 
 type GithubProvider struct {
-	Context context.Context
-	Client *github.Client
+	Context    context.Context
+	Client     *github.Client
 	Repository *github.Repository
-	Owner string
-	Repo string
+	Owner      string
+	Repo       string
 }
 
-func NewGithubClient(owner string, repo string) (*GithubProvider, error) {
+func newGithubClient(owner string, repo string) (*GithubProvider, error) {
 
 	accessToken := viper.GetString("github_access_token")
 	spew.Println("Connecting with ", accessToken)
@@ -45,7 +46,7 @@ func NewGithubClient(owner string, repo string) (*GithubProvider, error) {
 	return provider, nil
 }
 
-func (g *GithubProvider) Free() {
+func (g *GithubProvider) free() {
 	/* intentionally blank */
 }
 
@@ -76,18 +77,18 @@ func (g *GithubProvider) createCommit(message, username, email string, head *git
 	parents := []github.Commit{*head}
 
 	now := time.Now()
-	committer := &github.CommitAuthor {
-		Date: &now,
-		Name: &username,
+	committer := &github.CommitAuthor{
+		Date:  &now,
+		Name:  &username,
 		Email: &email,
 	}
 
 	commit := &github.Commit{
-		Author: committer,
+		Author:    committer,
 		Committer: committer,
-		Message: &message,
-		Tree: head.Tree,
-		Parents: parents,
+		Message:   &message,
+		Tree:      head.Tree,
+		Parents:   parents,
 	}
 
 	createdCommit, _, err := g.Client.Git.CreateCommit(g.Context, g.Owner, g.Repo, commit)
@@ -100,7 +101,7 @@ func (g *GithubProvider) createCommit(message, username, email string, head *git
 
 func (g *GithubProvider) updateReference(object *github.GitObject, ref string) (*github.Reference, error) {
 	reference := &github.Reference{
-		Ref: &ref,
+		Ref:    &ref,
 		Object: object,
 	}
 
@@ -128,9 +129,9 @@ func (g *GithubProvider) getReadme(ref string) (*github.RepositoryContent, error
 func (g *GithubProvider) updateReadme(sha, message, branch string, content []byte) (*github.RepositoryContentResponse, error) {
 	file := "README.md"
 	options := &github.RepositoryContentFileOptions{
-		SHA: &sha,
+		SHA:     &sha,
 		Message: &message,
-		Branch: &branch,
+		Branch:  &branch,
 		Content: content,
 	}
 
@@ -142,7 +143,7 @@ func (g *GithubProvider) updateReadme(sha, message, branch string, content []byt
 	return readme, nil
 }
 
-func (g *GithubProvider) Commit(b Bookmark) (*Bookmark, error) {
+func (g *GithubProvider) commit(b Bookmark) (*Bookmark, error) {
 	message := viper.GetString("MessagePrefix") + b.Title
 	branch := viper.GetString("Branch")
 	ref := "heads/" + branch
@@ -166,7 +167,7 @@ func (g *GithubProvider) Commit(b Bookmark) (*Bookmark, error) {
 
 	spew.Println("readme", readmeContents)
 
-	updatedReadme, err := g.updateReadme(readme.GetSHA(), message, branch, []byte(readmeContents + "\n* [" + b.Title + "](" + b.Url + ")"))
+	updatedReadme, err := g.updateReadme(readme.GetSHA(), message, branch, []byte(readmeContents+"\n* ["+b.Title+"]("+b.Url+")"))
 	if err != nil {
 		return nil, err
 	}
@@ -175,4 +176,3 @@ func (g *GithubProvider) Commit(b Bookmark) (*Bookmark, error) {
 
 	return &b, nil
 }
-

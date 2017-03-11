@@ -1,10 +1,10 @@
 package gitmark
 
 import (
-	"os"
-	"fmt"
-	"path"
 	"encoding/json"
+	"fmt"
+	"os"
+	"path"
 )
 
 type RootFolder struct {
@@ -13,14 +13,14 @@ type RootFolder struct {
 }
 
 type Bookmark struct {
-	Repo string
+	Repo  string
 	Title string
-	Url  string
+	Url   string
 }
 
-func AppendBookmark(root RootFolder, bookmark Bookmark) (string, error) {
+func appendBookmark(root RootFolder, bookmark Bookmark) (string, error) {
 	appendJson := false
-	appendContent := []byte {0}
+	appendContent := []byte{0}
 	if appendJson {
 		var err error
 		appendContent, err = json.Marshal(bookmark)
@@ -64,8 +64,12 @@ func createMissingFolder(folder string) (bool, error) {
 
 func exists(path string) (bool, error) {
 	_, err := os.Stat(path)
-	if err == nil { return true, nil }
-	if os.IsNotExist(err) { return false, nil }
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
 	return true, err
 }
 
@@ -83,4 +87,3 @@ func appendToFile(filename string, content []byte) error {
 
 	return nil
 }
-
